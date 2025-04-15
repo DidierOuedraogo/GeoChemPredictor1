@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
@@ -13,15 +12,6 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.decomposition import PCA
 import seaborn as sns
 from io import BytesIO
-
-# Vérifier si TensorFlow est disponible
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import Dense, Dropout
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
 
 # Configuration de la page
 st.set_page_config(
@@ -86,25 +76,6 @@ def load_data(file):
     except Exception as e:
         st.error(f"Erreur lors du chargement des données: {e}")
         return None
-
-# Fonction pour télécharger un fichier
-def download_file(object_to_download, download_filename, download_link_text):
-    if isinstance(object_to_download, pd.DataFrame):
-        object_to_download = object_to_download.to_csv(index=False)
-        
-    # Créer un lien de téléchargement
-    b64 = BytesIO()
-    if isinstance(object_to_download, str):
-        b64.write(object_to_download.encode())
-    else:
-        b64.write(object_to_download)
-    b64.seek(0)
-    return st.download_button(
-        label=download_link_text,
-        data=b64,
-        file_name=download_filename,
-        mime="text/csv"
-    )
 
 # Page d'accueil
 if page == "Accueil":
@@ -195,22 +166,13 @@ elif page == "Prédiction de Minéralisation":
                 features.remove(target)
             
             # Sélection du modèle
-            model_options = ["XGBoost", "LightGBM"]
-            if TENSORFLOW_AVAILABLE:
-                model_options.append("Réseau de Neurones")
-                
-            model_type = st.radio("Sélectionner le modèle de régression", model_options)
+            model_type = st.radio("Sélectionner le modèle de régression", ["XGBoost", "LightGBM"])
             
             # Paramètres du modèle
             with st.expander("Paramètres avancés du modèle"):
-                if model_type == "XGBoost" or model_type == "LightGBM":
-                    n_estimators = st.slider("Nombre d'estimateurs", 50, 500, 100, 10)
-                    learning_rate = st.slider("Taux d'apprentissage", 0.01, 0.3, 0.1, 0.01)
-                    max_depth = st.slider("Profondeur maximale", 3, 10, 6, 1)
-                elif model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
-                    epochs = st.slider("Nombre d'époques", 10, 200, 50, 5)
-                    batch_size = st.slider("Taille du batch", 8, 128, 32, 8)
-                    dropout_rate = st.slider("Taux de dropout", 0.0, 0.5, 0.2, 0.05)
+                n_estimators = st.slider("Nombre d'estimateurs", 50, 500, 100, 10)
+                learning_rate = st.slider("Taux d'apprentissage", 0.01, 0.3, 0.1, 0.01)
+                max_depth = st.slider("Profondeur maximale", 3, 10, 6, 1)
             
             # Entraînement du modèle
             if st.button("Entraîner le modèle"):
@@ -251,35 +213,10 @@ elif page == "Prédiction de Minéralisation":
                             random_state=42
                         )
                         model.fit(X_train, y_train)
-                        
-                    elif model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
-                        # Définition du modèle
-                        model = Sequential()
-                        model.add(Dense(128, activation='relu', input_shape=(X_train_scaled.shape[1],)))
-                        model.add(Dropout(dropout_rate))
-                        model.add(Dense(64, activation='relu'))
-                        model.add(Dropout(dropout_rate))
-                        model.add(Dense(32, activation='relu'))
-                        model.add(Dense(1))
-                        
-                        # Compilation
-                        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-                        
-                        # Entraînement
-                        history = model.fit(
-                            X_train_scaled, y_train,
-                            epochs=epochs,
-                            batch_size=batch_size,
-                            validation_split=0.2,
-                            verbose=0
-                        )
                 
                 # Évaluation du modèle
                 with st.spinner('Évaluation du modèle en cours...'):
-                    if model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
-                        y_pred = model.predict(X_test_scaled).flatten()
-                    else:
-                        y_pred = model.predict(X_test)
+                    y_pred = model.predict(X_test)
                     
                     mse = mean_squared_error(y_test, y_pred)
                     rmse = np.sqrt(mse)
@@ -316,23 +253,22 @@ elif page == "Prédiction de Minéralisation":
                     
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Importance des caractéristiques pour XGBoost et LightGBM
-                    if model_type in ["XGBoost", "LightGBM"]:
-                        st.subheader("Importance des caractéristiques")
-                        
-                        importance = model.feature_importances_
-                        feature_importance = pd.DataFrame({
-                            'Feature': features,
-                            'Importance': importance
-                        }).sort_values(by='Importance', ascending=False)
-                        
-                        fig = px.bar(
-                            feature_importance,
-                            x='Importance', y='Feature',
-                            orientation='h',
-                            title="Importance des éléments géochimiques"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+                    # Importance des caractéristiques
+                    st.subheader("Importance des caractéristiques")
+                    
+                    importance = model.feature_importances_
+                    feature_importance = pd.DataFrame({
+                        'Feature': features,
+                        'Importance': importance
+                    }).sort_values(by='Importance', ascending=False)
+                    
+                    fig = px.bar(
+                        feature_importance,
+                        x='Importance', y='Feature',
+                        orientation='h',
+                        title="Importance des éléments géochimiques"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
                     
                     # Histogramme d'erreurs
                     st.subheader("Distribution des erreurs")
@@ -347,11 +283,7 @@ elif page == "Prédiction de Minéralisation":
                     # Prédiction sur l'ensemble des données
                     st.subheader("Prédictions sur l'ensemble des données")
                     
-                    if model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
-                        X_scaled = scaler.transform(X)
-                        predictions = model.predict(X_scaled).flatten()
-                    else:
-                        predictions = model.predict(X)
+                    predictions = model.predict(X)
                     
                     result_df = df.copy()
                     result_df[f'{target}_prédit'] = predictions
@@ -407,21 +339,10 @@ elif page == "Détection d'Anomalies":
                                      numeric_columns, 
                                      default=numeric_columns[:5] if len(numeric_columns) >= 5 else numeric_columns)
             
-            # Sélection de l'algorithme
-            algo_options = ["Isolation Forest"]
-            if TENSORFLOW_AVAILABLE:
-                algo_options.append("Autoencoder")
-                
-            algo_type = st.radio("Sélectionner l'algorithme de détection d'anomalies", algo_options)
-            
             # Paramètres avancés
             with st.expander("Paramètres avancés de détection"):
-                if algo_type == "Isolation Forest":
-                    contamination = st.slider("Taux de contamination estimé", 0.01, 0.5, 0.1, 0.01)
-                    n_estimators = st.slider("Nombre d'estimateurs", 50, 500, 100, 10)
-                elif algo_type == "Autoencoder" and TENSORFLOW_AVAILABLE:
-                    epochs = st.slider("Nombre d'époques", 10, 200, 50, 5)
-                    threshold_percentile = st.slider("Percentile pour le seuil d'erreur", 90, 99, 95, 1)
+                contamination = st.slider("Taux de contamination estimé", 0.01, 0.5, 0.1, 0.01)
+                n_estimators = st.slider("Nombre d'estimateurs", 50, 500, 100, 10)
             
             # Lancement de la détection d'anomalies
             if st.button("Détecter les anomalies"):
@@ -439,49 +360,16 @@ elif page == "Détection d'Anomalies":
                 
                 # Détection d'anomalies
                 with st.spinner('Détection d\'anomalies en cours...'):
-                    if algo_type == "Isolation Forest":
-                        model = IsolationForest(
-                            n_estimators=n_estimators,
-                            contamination=contamination,
-                            random_state=42
-                        )
-                        anomaly_scores = model.fit_predict(X_scaled)
-                        # Conversion des scores (-1 pour anomalie, 1 pour normal) en binaire (1 pour anomalie, 0 pour normal)
-                        anomalies = np.where(anomaly_scores == -1, 1, 0)
-                        # Calcul des scores d'anomalie
-                        scores = -model.score_samples(X_scaled)
-                        
-                    elif algo_type == "Autoencoder" and TENSORFLOW_AVAILABLE:
-                        # Définition du modèle
-                        input_dim = X_scaled.shape[1]
-                        encoding_dim = max(1, input_dim // 2)
-                        
-                        model = Sequential([
-                            Dense(encoding_dim * 2, activation='relu', input_shape=(input_dim,)),
-                            Dense(encoding_dim, activation='relu'),
-                            Dense(encoding_dim * 2, activation='relu'),
-                            Dense(input_dim, activation='linear')
-                        ])
-                        
-                        model.compile(optimizer='adam', loss='mse')
-                        
-                        # Entraînement
-                        history = model.fit(
-                            X_scaled, X_scaled,
-                            epochs=epochs,
-                            batch_size=32,
-                            validation_split=0.2,
-                            verbose=0
-                        )
-                        
-                        # Calcul des erreurs de reconstruction
-                        reconstructed = model.predict(X_scaled)
-                        mse = np.mean(np.power(X_scaled - reconstructed, 2), axis=1)
-                        scores = mse
-                        
-                        # Détermination du seuil d'anomalie
-                        threshold = np.percentile(mse, threshold_percentile)
-                        anomalies = np.where(mse > threshold, 1, 0)
+                    model = IsolationForest(
+                        n_estimators=n_estimators,
+                        contamination=contamination,
+                        random_state=42
+                    )
+                    anomaly_scores = model.fit_predict(X_scaled)
+                    # Conversion des scores (-1 pour anomalie, 1 pour normal) en binaire (1 pour anomalie, 0 pour normal)
+                    anomalies = np.where(anomaly_scores == -1, 1, 0)
+                    # Calcul des scores d'anomalie
+                    scores = -model.score_samples(X_scaled)
                 
                 st.success('Détection d\'anomalies terminée!')
                 
@@ -536,30 +424,20 @@ elif page == "Détection d'Anomalies":
                     st.subheader("Visualisation par réduction dimensionnelle (PCA)")
                     
                     pca_df = pd.DataFrame(
-                        PCA(n_components=min(3, len(features))).fit_transform(X_scaled),
-                        columns=[f'PC{i+1}' for i in range(min(3, len(features)))]
+                        PCA(n_components=min(2, len(features))).fit_transform(X_scaled),
+                        columns=[f'PC{i+1}' for i in range(min(2, len(features)))]
                     )
                     pca_df['Anomalie'] = anomalies
                     pca_df['Score_Anomalie'] = result_df['Score_Anomalie']
                     
-                    if len(features) >= 3:
-                        fig = px.scatter_3d(
-                            pca_df, 
-                            x='PC1', y='PC2', z='PC3',
-                            color='Anomalie',
-                            size='Score_Anomalie',
-                            opacity=0.7,
-                            title="Visualisation 3D des anomalies (PCA)"
-                        )
-                    else:
-                        fig = px.scatter(
-                            pca_df, 
-                            x='PC1', y='PC2',
-                            color='Anomalie',
-                            size='Score_Anomalie',
-                            opacity=0.7,
-                            title="Visualisation 2D des anomalies (PCA)"
-                        )
+                    fig = px.scatter(
+                        pca_df, 
+                        x='PC1', y='PC2',
+                        color='Anomalie',
+                        size='Score_Anomalie',
+                        opacity=0.7,
+                        title="Visualisation 2D des anomalies (PCA)"
+                    )
                     
                     st.plotly_chart(fig, use_container_width=True)
                 
@@ -577,19 +455,6 @@ elif page == "Détection d'Anomalies":
                         title="Carte spatiale des anomalies"
                     )
                     st.plotly_chart(fig, use_container_width=True)
-                
-                # Heatmap de corrélation entre les variables et les anomalies
-                st.subheader("Corrélation entre éléments et anomalies")
-                
-                corr_features = features + ['Anomalie', 'Score_Anomalie']
-                corr_matrix = result_df[corr_features].corr()
-                
-                fig = px.imshow(
-                    corr_matrix,
-                    text_auto=True,
-                    title="Matrice de corrélation"
-                )
-                st.plotly_chart(fig, use_container_width=True)
 
 # Page de recommandation de cibles
 elif page == "Recommandation de Cibles":
