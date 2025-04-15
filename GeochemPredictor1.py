@@ -10,12 +10,18 @@ import xgboost as xgb
 import lightgbm as lgb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
 from sklearn.decomposition import PCA
 import seaborn as sns
 from io import BytesIO
+
+# Vérifier si TensorFlow est disponible
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import Dense, Dropout
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
 
 # Configuration de la page
 st.set_page_config(
@@ -58,7 +64,6 @@ st.markdown("<h3 class='sub-header'>Analyse Géochimique Automatisée</h3>", uns
 st.markdown("<p class='info-text'>Développé par Didier Ouedraogo, P.Geo</p>", unsafe_allow_html=True)
 
 # Sidebar pour la navigation
-st.sidebar.image("https://raw.githubusercontent.com/streamlit/streamlit/master/examples/data/logo.jpg", width=100)
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Choisir une fonction :", 
                         ["Accueil", 
@@ -190,8 +195,11 @@ elif page == "Prédiction de Minéralisation":
                 features.remove(target)
             
             # Sélection du modèle
-            model_type = st.radio("Sélectionner le modèle de régression", 
-                                 ["XGBoost", "LightGBM", "Réseau de Neurones"])
+            model_options = ["XGBoost", "LightGBM"]
+            if TENSORFLOW_AVAILABLE:
+                model_options.append("Réseau de Neurones")
+                
+            model_type = st.radio("Sélectionner le modèle de régression", model_options)
             
             # Paramètres du modèle
             with st.expander("Paramètres avancés du modèle"):
@@ -199,7 +207,7 @@ elif page == "Prédiction de Minéralisation":
                     n_estimators = st.slider("Nombre d'estimateurs", 50, 500, 100, 10)
                     learning_rate = st.slider("Taux d'apprentissage", 0.01, 0.3, 0.1, 0.01)
                     max_depth = st.slider("Profondeur maximale", 3, 10, 6, 1)
-                elif model_type == "Réseau de Neurones":
+                elif model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
                     epochs = st.slider("Nombre d'époques", 10, 200, 50, 5)
                     batch_size = st.slider("Taille du batch", 8, 128, 32, 8)
                     dropout_rate = st.slider("Taux de dropout", 0.0, 0.5, 0.2, 0.05)
@@ -244,7 +252,7 @@ elif page == "Prédiction de Minéralisation":
                         )
                         model.fit(X_train, y_train)
                         
-                    elif model_type == "Réseau de Neurones":
+                    elif model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
                         # Définition du modèle
                         model = Sequential()
                         model.add(Dense(128, activation='relu', input_shape=(X_train_scaled.shape[1],)))
@@ -268,7 +276,7 @@ elif page == "Prédiction de Minéralisation":
                 
                 # Évaluation du modèle
                 with st.spinner('Évaluation du modèle en cours...'):
-                    if model_type == "Réseau de Neurones":
+                    if model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
                         y_pred = model.predict(X_test_scaled).flatten()
                     else:
                         y_pred = model.predict(X_test)
@@ -339,7 +347,7 @@ elif page == "Prédiction de Minéralisation":
                     # Prédiction sur l'ensemble des données
                     st.subheader("Prédictions sur l'ensemble des données")
                     
-                    if model_type == "Réseau de Neurones":
+                    if model_type == "Réseau de Neurones" and TENSORFLOW_AVAILABLE:
                         X_scaled = scaler.transform(X)
                         predictions = model.predict(X_scaled).flatten()
                     else:
@@ -364,24 +372,22 @@ elif page == "Prédiction de Minéralisation":
                     if 'X' in df.columns and 'Y' in df.columns:
                         st.subheader("Carte de prédiction")
                         
-                        fig = px.scatter_mapbox(
+                        fig = px.scatter(
                             result_df,
-                            lat='Y', lon='X',
+                            x='X', y='Y',
                             color=f'{target}_prédit',
                             size=f'{target}_prédit',
                             color_continuous_scale='Viridis',
                             size_max=15,
-                            zoom=10,
                             title=f"Carte de prédiction de {target}"
                         )
-                        fig.update_layout(mapbox_style="open-street-map")
                         st.plotly_chart(fig, use_container_width=True)
 
 # Page de détection d'anomalies
 elif page == "Détection d'Anomalies":
     st.markdown("<h2 class='sub-header'>Détection d'Anomalies Géochimiques</h2>", unsafe_allow_html=True)
     
-    st.info("Cette fonction utilise des algorithmes d'apprentissage non supervisé (Isolation Forest, Autoencoders) pour détecter les anomalies géochimiques dans vos données.")
+    st.info("Cette fonction utilise des algorithmes d'apprentissage non supervisé pour détecter les anomalies géochimiques dans vos données.")
     
     # Téléchargement du fichier
     uploaded_file = st.file_uploader("Télécharger vos données géochimiques (CSV ou Excel)", type=["csv", "xlsx", "xls"])
@@ -402,15 +408,18 @@ elif page == "Détection d'Anomalies":
                                      default=numeric_columns[:5] if len(numeric_columns) >= 5 else numeric_columns)
             
             # Sélection de l'algorithme
-            algo_type = st.radio("Sélectionner l'algorithme de détection d'anomalies", 
-                                ["Isolation Forest", "Autoencoder"])
+            algo_options = ["Isolation Forest"]
+            if TENSORFLOW_AVAILABLE:
+                algo_options.append("Autoencoder")
+                
+            algo_type = st.radio("Sélectionner l'algorithme de détection d'anomalies", algo_options)
             
             # Paramètres avancés
             with st.expander("Paramètres avancés de détection"):
                 if algo_type == "Isolation Forest":
                     contamination = st.slider("Taux de contamination estimé", 0.01, 0.5, 0.1, 0.01)
                     n_estimators = st.slider("Nombre d'estimateurs", 50, 500, 100, 10)
-                elif algo_type == "Autoencoder":
+                elif algo_type == "Autoencoder" and TENSORFLOW_AVAILABLE:
                     epochs = st.slider("Nombre d'époques", 10, 200, 50, 5)
                     threshold_percentile = st.slider("Percentile pour le seuil d'erreur", 90, 99, 95, 1)
             
@@ -439,8 +448,10 @@ elif page == "Détection d'Anomalies":
                         anomaly_scores = model.fit_predict(X_scaled)
                         # Conversion des scores (-1 pour anomalie, 1 pour normal) en binaire (1 pour anomalie, 0 pour normal)
                         anomalies = np.where(anomaly_scores == -1, 1, 0)
+                        # Calcul des scores d'anomalie
+                        scores = -model.score_samples(X_scaled)
                         
-                    elif algo_type == "Autoencoder":
+                    elif algo_type == "Autoencoder" and TENSORFLOW_AVAILABLE:
                         # Définition du modèle
                         input_dim = X_scaled.shape[1]
                         encoding_dim = max(1, input_dim // 2)
@@ -466,6 +477,7 @@ elif page == "Détection d'Anomalies":
                         # Calcul des erreurs de reconstruction
                         reconstructed = model.predict(X_scaled)
                         mse = np.mean(np.power(X_scaled - reconstructed, 2), axis=1)
+                        scores = mse
                         
                         # Détermination du seuil d'anomalie
                         threshold = np.percentile(mse, threshold_percentile)
@@ -476,11 +488,7 @@ elif page == "Détection d'Anomalies":
                 # Ajout des résultats au dataframe
                 result_df = df.copy()
                 result_df['Anomalie'] = anomalies
-                
-                if algo_type == "Isolation Forest":
-                    result_df['Score_Anomalie'] = model.decision_function(X_scaled)
-                elif algo_type == "Autoencoder":
-                    result_df['Score_Anomalie'] = mse
+                result_df['Score_Anomalie'] = scores
                 
                 # Affichage des résultats
                 st.subheader("Résultats de la détection d'anomalies")
@@ -559,17 +567,15 @@ elif page == "Détection d'Anomalies":
                 if 'X' in df.columns and 'Y' in df.columns:
                     st.subheader("Carte des anomalies")
                     
-                    fig = px.scatter_mapbox(
+                    fig = px.scatter(
                         result_df,
-                        lat='Y', lon='X',
+                        x='X', y='Y',
                         color='Anomalie',
                         size='Score_Anomalie',
                         color_discrete_sequence=['blue', 'red'],
                         size_max=15,
-                        zoom=10,
                         title="Carte spatiale des anomalies"
                     )
-                    fig.update_layout(mapbox_style="open-street-map")
                     st.plotly_chart(fig, use_container_width=True)
                 
                 # Heatmap de corrélation entre les variables et les anomalies
@@ -783,13 +789,12 @@ elif page == "Recommandation de Cibles":
                         map_df = pd.concat([df_map[common_cols], rec_df_map[common_cols]], ignore_index=True)
                         
                         # Création de la carte
-                        fig = px.scatter_mapbox(
+                        fig = px.scatter(
                             map_df,
-                            lat='Y', lon='X',
+                            x='X', y='Y',
                             color='Type',
                             hover_data=target_elements,
                             color_discrete_sequence=['blue', 'red'],
-                            zoom=10,
                             title="Carte des recommandations de cibles"
                         )
                         
@@ -803,7 +808,6 @@ elif page == "Recommandation de Cibles":
                                 arrowhead=1
                             )
                         
-                        fig.update_layout(mapbox_style="open-street-map")
                         st.plotly_chart(fig, use_container_width=True)
                         
                         # Carte de chaleur pour faciliter la visualisation
